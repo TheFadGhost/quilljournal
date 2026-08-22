@@ -99,6 +99,7 @@ export interface AppSettings {
   discardAudioAfterTranscriptionDefault: boolean;
   globalNewEntryShortcut: string;
   onboardedAt: string | null;
+  lastExportAt: string | null;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -116,4 +117,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   discardAudioAfterTranscriptionDefault: false,
   globalNewEntryShortcut: "Control+Alt+N",
   onboardedAt: null,
+  lastExportAt: null,
 };
