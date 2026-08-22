@@ -1,0 +1,36 @@
+{
+  "name": "quilljournal",
+  "productName": "Quilljournal",
+  "version": "0.1.0",
+  "description": "A private, local-first journal you can write or speak into. No account, no telemetry.",
+  "license": "MIT",
+  "author": "Quilljournal contributors",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "vite build && tsc -p tsconfig.electron.json",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "dompurify": "^3.2.4",
+    "marked": "^15.0.7",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "electron": "^37.0.0",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^3.2.2"
+  }
+}

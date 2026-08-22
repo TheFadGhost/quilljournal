@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+dist-electron/
+coverage/
+*.tsbuildinfo
+
+# private journal data — never commit
+journal-data/
+data/
+*.quill-journal/
+recordings/
+audio-cache/
+
+# local config that may contain endpoints or keys
+config.local.json
+.env
+.env.*
+
+# real audio or personal writing fixtures (only synthetic fixtures are committed)
+fixtures/real-audio/
+fixtures/real-writing/
+
+# OS / editor noise
+Thumbs.db
+.DS_Store
