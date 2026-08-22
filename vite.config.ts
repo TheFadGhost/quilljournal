@@ -11,6 +11,7 @@ export default defineConfig({
     emptyOutDir: true,
   },
   test: {
+    root: ".",
     environment: "node",
     include: ["tests/**/*.test.ts", "src/**/*.test.ts"],
     globals: false,
