@@ -29,3 +29,5 @@ Thumbs.db
 
 # test scratch dirs
 tests/.tmp/
+
+.briefs/

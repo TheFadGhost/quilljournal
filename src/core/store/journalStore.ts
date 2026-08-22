@@ -378,6 +378,21 @@ export class JournalStore {
     return this.readEntryFile(path);
   }
 
+  async getEntryOrNull(id: string): Promise<Entry | null> {
+    this.assertUsableForContent();
+    const stored = await this.tryReadStoredEntry(id);
+    return stored;
+  }
+
+  async putEntryRaw(entry: Entry): Promise<void> {
+    this.assertUsableForContent();
+    await this.persistEntryFile(entry);
+  }
+
+  async writeFileRaw(relPath: string, bytes: Uint8Array): Promise<void> {
+    await this.writeContent(relPath, bytes);
+  }
+
   async listEntries(): Promise<Entry[]> {
     this.assertUsableForContent();
     const items = await this.fs.listDir(ENTRIES_DIR);

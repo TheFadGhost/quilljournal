@@ -10,7 +10,7 @@
   "main": "dist-electron/main/main.js",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "build": "vite build && tsc -p tsconfig.electron.json",
+    "build": "vite build && tsc -p tsconfig.electron.json && node scripts/copy-preload.mjs",
     "start": "npm run build && electron .",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "test": "vitest run",
