@@ -28,6 +28,11 @@ export class RendererFileSystem implements FileSystemLike {
     const req: WriteRequest = { path: relPath, data };
     await getQuillRaw().invoke("fs:write-atomic", req);
   }
+  async appendFile(_relPath: string, _data: Uint8Array): Promise<void> {
+    throw new Error(
+      "generic append is not available over IPC; use the recording-writer channels (rec:start/rec:append)",
+    );
+  }
   async readFile(relPath: string): Promise<Uint8Array> {
     const data = await getQuillRaw().invoke("fs:read-file", relPath);
     return toBytes(data);
