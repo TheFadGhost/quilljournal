@@ -26,3 +26,6 @@ fixtures/real-writing/
 # OS / editor noise
 Thumbs.db
 .DS_Store
+
+# test scratch dirs
+tests/.tmp/
