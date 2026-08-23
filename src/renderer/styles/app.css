@@ -289,6 +289,7 @@ textarea::placeholder {
 }
 
 .row-date {
+  display: block;
   font-size: var(--text-ui-small);
   font-variant-caps: all-small-caps;
   letter-spacing: 0.05em;
@@ -296,6 +297,7 @@ textarea::placeholder {
 }
 
 .row-title {
+  display: block;
   font-family: var(--font-composition);
   font-size: 15px;
   color: var(--ink-high);
@@ -303,6 +305,7 @@ textarea::placeholder {
 }
 
 .row-excerpt {
+  display: block;
   color: var(--ink-mid);
   margin-block: 2px 6px;
 }

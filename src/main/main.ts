@@ -83,10 +83,36 @@ async function createMainWindow(): Promise<void> {
   });
   if (devServerUrl.length > 0) {
     await mainWindow.loadURL(devServerUrl);
-    mainWindow.webContents.openDevTools({ mode: "detach" });
+    if (!process.env["QUILL_SHOT"]) mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {
     await mainWindow.loadFile(rendererIndexPath);
   }
+}
+
+async function runScreenshotTour(): Promise<void> {
+  const target = process.env["QUILL_SHOT"] ?? "";
+  const window = mainWindow;
+  if (!target || !window) return;
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const shoot = async (name: string): Promise<void> => {
+    const image = await window.webContents.capturePage();
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(path.join(target, name), image.toPNG());
+  };
+  const clickButton = (label: string): void => {
+    void window.webContents.executeJavaScript(
+      `(() => { const b=[...document.querySelectorAll('button')].find(x=>x.textContent.trim()===${JSON.stringify(label)}); if(b) b.click(); })()`,
+    );
+  };
+  await sleep(2500);
+  await shoot("writing-surface.png");
+  clickButton("Browse");
+  await sleep(900);
+  await shoot("browse-calendar.png");
+  clickButton("Search");
+  await sleep(600);
+  await shoot("search.png");
+  app.quit();
 }
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -115,6 +141,7 @@ if (!gotSingleInstanceLock) {
     if (settings.globalNewEntryShortcut) {
       await ipcApi.registerGlobalShortcut(settings.globalNewEntryShortcut);
     }
+    if (process.env["QUILL_SHOT"]) await runScreenshotTour();
   });
 
   app.on("before-quit", (event) => {
