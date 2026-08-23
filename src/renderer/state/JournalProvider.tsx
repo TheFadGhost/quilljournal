@@ -40,6 +40,10 @@ export function useJournal(): JournalContextValue {
   return value;
 }
 
+export function useJournalOptional(): JournalContextValue | null {
+  return useContext(JournalContext);
+}
+
 interface JournalProviderProps {
   children: ReactNode;
 }

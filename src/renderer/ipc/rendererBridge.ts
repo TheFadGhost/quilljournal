@@ -1,6 +1,7 @@
 import type { FileSystemLike } from "../../core/fslike.js";
 import type { AppSettings, JournalManifest } from "../../core/types.js";
 import { DEFAULT_SETTINGS } from "../../core/types.js";
+import type { JournalStore } from "../../core/store/journalStore.js";
 import type {
   IpcBridge,
   RecordingWriterStart,
@@ -70,6 +71,23 @@ export class RendererFileSystem implements FileSystemLike {
   async removeDir(relPath: string): Promise<void> {
     await getQuillRaw().invoke("fs:remove-dir", relPath);
   }
+}
+
+export function audioAwareFileSystem(store: JournalStore): FileSystemLike {
+  const base = new RendererFileSystem();
+  return {
+    writeFileAtomic: (relPath, data) => base.writeFileAtomic(relPath, data),
+    appendFile: (relPath, data) => base.appendFile(relPath, data),
+    readFile: (relPath) => store.readAudio(relPath),
+    readTextFile: async (relPath) => new TextDecoder().decode(await store.readAudio(relPath)),
+    exists: (relPath) => base.exists(relPath),
+    stat: (relPath) => base.stat(relPath),
+    unlink: (relPath) => base.unlink(relPath),
+    mkdirp: (relPath) => base.mkdirp(relPath),
+    listDir: (relPath) => base.listDir(relPath),
+    rename: (from, to) => base.rename(from, to),
+    removeDir: (relPath) => base.removeDir(relPath),
+  };
 }
 
 function toBytes(data: unknown): Uint8Array {

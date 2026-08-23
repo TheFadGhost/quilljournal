@@ -17,6 +17,7 @@ import {
   deriveKey,
   encodeEnvelope,
   encrypt,
+  hasEnvelopeMagic,
   randomBytes,
   type AesKey,
 } from "../crypto.js";
@@ -29,6 +30,20 @@ const MANIFEST_FILE = "manifest.json";
 const VERIFIER_MESSAGE = "quilljournal-verifier-v1";
 const DEFAULT_COALESCE_MS = 600_000;
 const FRAME_LENGTH_BYTES = 4;
+
+function isFramedEnvelopes(raw: Uint8Array): boolean {
+  if (raw.length < FRAME_LENGTH_BYTES) return false;
+  const firstLength = new DataView(
+    raw.buffer,
+    raw.byteOffset,
+    FRAME_LENGTH_BYTES,
+  ).getUint32(0, false);
+  return (
+    firstLength > 0 &&
+    firstLength + FRAME_LENGTH_BYTES <= raw.length &&
+    !hasEnvelopeMagic(raw)
+  );
+}
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -260,12 +275,120 @@ export class JournalStore {
     }
   }
 
+  async sealAudioChunk(chunk: Uint8Array): Promise<Uint8Array> {
+    if (!this.isEncrypted()) return chunk;
+    const key = this.requireKey();
+    const envelope = encodeEnvelope(await encrypt(key, chunk));
+    const frame = new Uint8Array(FRAME_LENGTH_BYTES + envelope.length);
+    new DataView(frame.buffer).setUint32(0, envelope.length, false);
+    frame.set(envelope, FRAME_LENGTH_BYTES);
+    return frame;
+  }
+
+  async consolidateAudioFile(relPath: string): Promise<void> {
+    if (!this.isEncrypted()) return;
+    const raw = await this.fs.readFile(relPath);
+    if (!isFramedEnvelopes(raw)) return;
+    const plaintextParts: Uint8Array[] = [];
+    let offset = 0;
+    while (offset < raw.length) {
+      if (offset + FRAME_LENGTH_BYTES > raw.length) {
+        throw new StorageError("corrupt", `${relPath} has a truncated audio frame length`);
+      }
+      const view = new DataView(raw.buffer, raw.byteOffset + offset, FRAME_LENGTH_BYTES);
+      const length = view.getUint32(0, false);
+      offset += FRAME_LENGTH_BYTES;
+      if (offset + length > raw.length) {
+        throw new StorageError("corrupt", `${relPath} has a truncated audio frame`);
+      }
+      const envelope = decodeEnvelope(raw.subarray(offset, offset + length));
+      plaintextParts.push(await decrypt(this.requireKey(), envelope.iv, envelope.ct));
+      offset += length;
+    }
+    let total = 0;
+    for (const part of plaintextParts) total += part.length;
+    const merged = new Uint8Array(total);
+    let cursor = 0;
+    for (const part of plaintextParts) {
+      merged.set(part, cursor);
+      cursor += part.length;
+    }
+    await this.writeContent(relPath, merged);
+  }
+
+  async readAudio(storedPath: string): Promise<Uint8Array> {
+    return this.readContent(storedPath);
+  }
+
+  async disableEncryption(passphrase: string): Promise<void> {
+    const manifest = this.requireManifest();
+    if (!manifest.encryption) throw new Error("encryption is not enabled");
+    await this.unlock(passphrase);
+    this.manifestData = {
+      ...manifest,
+      encryption: { ...manifest.encryption, transitioning: true },
+    };
+    await this.writeManifest();
+    await this.decryptAllExistingFiles();
+    this.manifestData = { ...this.manifestData, encryption: null };
+    this.key = null;
+    await this.writeManifest();
+  }
+
+  async changePassphrase(oldPassphrase: string, newPassphrase: string): Promise<void> {
+    if (newPassphrase.length === 0) throw new RangeError("passphrase must not be empty");
+    await this.disableEncryption(oldPassphrase);
+    await this.enableEncryption(newPassphrase);
+  }
+
+  private requireKey(): AesKey {
+    const key = this.key;
+    if (!key) throw new StorageError("locked", "journal is encrypted and locked; unlock first");
+    return key;
+  }
+
+  private async decryptAllExistingFiles(): Promise<void> {
+    for (const relPath of await this.listAllContentFiles()) {
+      const plain = await this.readContent(relPath);
+      await this.fs.writeFileAtomic(relPath, plain);
+    }
+  }
+
+  private async listAllContentFiles(): Promise<string[]> {
+    const paths: string[] = [];
+    for (const item of await this.fs.listDir(ENTRIES_DIR)) {
+      if (!item.isDirectory && item.name.endsWith(".json")) {
+        paths.push(joinPath(ENTRIES_DIR, item.name));
+      }
+    }
+    for (const dir of await this.fs.listDir(ATTACHMENTS_DIR)) {
+      if (!dir.isDirectory) continue;
+      const dirRel = joinPath(ATTACHMENTS_DIR, dir.name);
+      for (const file of await this.fs.listDir(dirRel)) {
+        if (!file.isDirectory) paths.push(joinPath(dirRel, file.name));
+      }
+    }
+    for (const dir of await this.fs.listDir(AUDIO_DIR)) {
+      if (!dir.isDirectory) continue;
+      const dirRel = joinPath(AUDIO_DIR, dir.name);
+      for (const file of await this.fs.listDir(dirRel)) {
+        if (!file.isDirectory) paths.push(joinPath(dirRel, file.name));
+      }
+    }
+    return paths;
+  }
+
   private async readContent(relPath: string): Promise<Uint8Array> {
     this.assertUsableForContent();
     const raw = await this.fs.readFile(relPath);
     if (!this.isEncrypted()) return raw;
     const key = this.key;
     if (!key) throw new StorageError("locked", "journal is encrypted and locked; unlock first");
+    if (!hasEnvelopeMagic(raw)) {
+      const encryption = this.requireManifest().encryption;
+      if (encryption?.transitioning) return raw;
+      throw new StorageError("corrupt", `${relPath} is not an encrypted envelope`);
+    }
     const envelope = decodeEnvelope(raw);
     return decrypt(key, envelope.iv, envelope.ct);
   }
@@ -477,23 +600,13 @@ export class JournalStore {
     await this.getEntry(entryId);
     const audioId = newId("audio");
     const relPath = joinPath(AUDIO_DIR, entryId, `${audioId}.webm`);
-    await this.writeContent(relPath, new Uint8Array(0));
+    await this.fs.writeFileAtomic(relPath, new Uint8Array(0));
     return relPath;
   }
 
   async appendAudioChunk(path: string, chunk: Uint8Array): Promise<void> {
     this.assertUsableForContent();
-    if (!this.isEncrypted()) {
-      await this.fs.appendFile(path, chunk);
-      return;
-    }
-    const key = this.key;
-    if (!key) throw new StorageError("locked", "journal is encrypted and locked; unlock first");
-    const envelope = encodeEnvelope(await encrypt(key, chunk));
-    const frame = new Uint8Array(FRAME_LENGTH_BYTES + envelope.length);
-    new DataView(frame.buffer).setUint32(0, envelope.length, false);
-    frame.set(envelope, FRAME_LENGTH_BYTES);
-    await this.fs.appendFile(path, frame);
+    await this.fs.appendFile(path, await this.sealAudioChunk(chunk));
   }
 
   async finalizeAudio(
@@ -505,29 +618,7 @@ export class JournalStore {
     if (!(await this.fs.exists(path))) {
       throw new StorageError("not-found", `audio recording ${path} not found`);
     }
-    if (!this.isEncrypted()) return;
-    const key = this.key;
-    if (!key) throw new StorageError("locked", "journal is encrypted and locked; unlock first");
-    const raw = await this.fs.readFile(path);
-    const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
-    const parts: Uint8Array[] = [];
-    let offset = 0;
-    while (offset + FRAME_LENGTH_BYTES <= raw.length) {
-      const length = view.getUint32(offset, false);
-      offset += FRAME_LENGTH_BYTES;
-      if (offset + length > raw.length) break;
-      const envelopeBytes = raw.slice(offset, offset + length);
-      offset += length;
-      try {
-        const envelope = decodeEnvelope(envelopeBytes);
-        parts.push(await decrypt(key, envelope.iv, envelope.ct));
-      } catch (cause) {
-        throw new StorageError("corrupt", `audio recording ${path} has an unreadable chunk`, {
-          cause,
-        });
-      }
-    }
-    await this.writeContent(path, concatBytes(parts));
+    await this.consolidateAudioFile(path);
   }
 
   async discardAudio(entryId: string): Promise<void> {

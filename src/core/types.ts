@@ -63,6 +63,7 @@ export interface JournalManifestEncryption {
   saltB64: string;
   verifierIvB64: string;
   verifierCtB64: string;
+  transitioning?: boolean;
 }
 
 export interface JournalManifest {

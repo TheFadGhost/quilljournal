@@ -98,3 +98,7 @@ function hasMagic(bytes: Uint8Array): boolean {
   }
   return true;
 }
+
+export function hasEnvelopeMagic(bytes: Uint8Array): boolean {
+  return hasMagic(bytes);
+}
